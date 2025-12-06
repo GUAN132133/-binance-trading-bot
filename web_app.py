@@ -1392,5 +1392,5 @@ if __name__ == '__main__':
     print("=" * 60)
     
     # 生产环境建议使用 Gunicorn，这里保留开发模式
-    socketio.run(app, host='0.0.0.0', port=port, debug=debug)
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug, allow_unsafe_werkzeug=True)
 
