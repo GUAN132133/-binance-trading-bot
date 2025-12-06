@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance 智能交易系统</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding-bottom: 40px;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .status-item {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .status-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .status-value.positive {
+            color: #10b981;
+        }
+        
+        .status-value.negative {
+            color: #ef4444;
+        }
+        
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .config-row {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: #444;
+        }
+
+        .config-row label {
+            font-weight: bold;
+        }
+
+        .select {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            min-width: 120px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: all 0.3s;
+        }
+        
+        .btn-start {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-start:hover {
+            background: #059669;
+        }
+        
+        .btn-stop {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-stop:hover {
+            background: #dc2626;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .panel h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .log-container {
+            height: 400px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            word-wrap: break-word;
+        }
+        
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .positions-table th,
+        .positions-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .positions-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 40px;
+        }
+        
+        .running-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .decision-container {
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .decision-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .decision-table th,
+        .decision-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .decision-table th {
+            background: #f4f6fb;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: #fff;
+        }
+
+        .tag-buy { background: #10b981; }
+        .tag-sell { background: #ef4444; }
+        .tag-flat { background: #6b7280; }
+        .tag-skip { background: #a855f7; }
+        .tag-failed { background: #dc2626; }
+        
+        .running-indicator.active {
+            background: #10b981;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            .header,
+            .control-panel,
+            .panel {
+                padding: 16px;
+            }
+
+            .status-bar {
+                flex-direction: column;
+            }
+
+            .status-value {
+                font-size: 20px;
+            }
+
+            .config-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+
+            .config-row label {
+                margin-bottom: 4px;
+            }
+
+            .select,
+            .btn {
+                width: 100%;
+                margin-right: 0;
+            }
+
+            .log-container {
+                height: 240px;
+            }
+
+            .decision-table th,
+            .decision-table td,
+            .positions-table th,
+            .positions-table td {
+                white-space: normal;
+            }
+
+            .control-panel {
+                position: sticky;
+                top: 0;
+                z-index: 100;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Binance 智能交易系统</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-label">运行状态</div>
+                    <div class="status-value">
+                        <span class="running-indicator" id="runningIndicator"></span>
+                        <span id="statusText">已停止</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">合约账户资金</div>
+                    <div class="status-value" id="equity">0.00 USDT</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">当前回撤</div>
+                    <div class="status-value" id="drawdown">0.00%</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">持仓数量</div>
+                    <div class="status-value" id="positionCount">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-panel">
+            <button class="btn btn-start" id="btnStart" onclick="startTrading()">▶ 启动交易</button>
+            <button class="btn btn-stop" id="btnStop" onclick="stopTrading()" disabled>⏹ 停止交易</button>
+
+            <div class="config-row">
+                <label for="intervalSelect">运行周期：</label>
+                <select id="intervalSelect" class="select">
+                    <option value="1m">1 分钟</option>
+                    <option value="3m">3 分钟</option>
+                    <option value="5m">5 分钟</option>
+                    <option value="15m">15 分钟</option>
+                </select>
+                <button class="btn" onclick="saveInterval()">💾 保存周期</button>
+                <span id="currentIntervalText" style="margin-left:10px;color:#666;">当前周期：未知</span>
+            </div>
+
+            <div class="config-row">
+                <label for="strategySelect">策略模式：</label>
+                <select id="strategySelect" class="select">
+                    <option value="conservative">保守型</option>
+                    <option value="balanced">均衡型</option>
+                    <option value="aggressive">激进型</option>
+                    <option value="scalping">做T型</option>
+                    <option value="sniper">舔一口就跑</option>
+                    <option value="momentum_guard">量能反向狙击</option>
+                </select>
+                <label for="strategyTypeSelect" style="margin-left:15px;">持仓类型：</label>
+                <select id="strategyTypeSelect" class="select">
+                    <option value="">默认（由DeepSeek决定）</option>
+                    <option value="_ultrashort">超短（5-30分钟）</option>
+                    <option value="_trend">趋势（30分钟-数小时）</option>
+                </select>
+                <button class="btn" onclick="saveStrategy()">💾 保存策略</button>
+                <span id="currentStrategyText" style="margin-left:10px;color:#666;">当前策略：未知</span>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="panel">
+                <h2>📊 实时日志</h2>
+                <div class="log-container" id="logContainer"></div>
+            </div>
+            
+            <div class="panel">
+                <h2>💼 当前持仓</h2>
+                <div id="positionsContainer" class="table-responsive">
+                    <div class="empty-state">暂无持仓</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px;">
+            <h2>🧠 最新策略决策</h2>
+            <div id="decisionsContainer" class="decision-container table-responsive">
+                <div class="empty-state">暂无决策</div>
+            </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px;">
+            <h2>📚 DeepSeek 历史学习总结（重启后不丢失）</h2>
+            <div id="learningHistoryContainer" class="decision-container table-responsive">
+                <div class="empty-state">暂无学习总结</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io();
+        let status = { running: false, interval: null, strategy_mode: null };
+        let decisionHistory = [];
+        
+        // WebSocket 连接
+        socket.on('connect', () => {
+            console.log('已连接到服务器');
+            updateStatus();
+        });
+        
+        socket.on('status_update', (data) => {
+            updateDisplay(data);
+        });
+        
+        socket.on('log', (data) => {
+            addLog(data.message);
+        });
+
+        socket.on('decision', (entry) => {
+            decisionHistory.push(entry);
+            if (decisionHistory.length > 50) {
+                decisionHistory = decisionHistory.slice(-50);
+            }
+            renderDecisions(decisionHistory);
+        });
+        
+        // 更新状态
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                status = data;
+                updateDisplay(data);
+                
+                // 更新按钮状态
+                document.getElementById('btnStart').disabled = data.running;
+                document.getElementById('btnStop').disabled = !data.running;
+                
+                // 更新运行指示器
+                const indicator = document.getElementById('runningIndicator');
+                const statusText = document.getElementById('statusText');
+                if (data.running) {
+                    indicator.classList.add('active');
+                    statusText.textContent = '运行中';
+                } else {
+                    indicator.classList.remove('active');
+                    statusText.textContent = '已停止';
+                }
+            } catch (error) {
+                console.error('获取状态失败:', error);
+            }
+        }
+        
+        // 更新显示
+        function updateDisplay(data) {
+            document.getElementById('equity').textContent = 
+                data.equity ? `${data.equity.toFixed(4)} USDT` : '0.00 USDT';
+            
+            const drawdown = data.drawdown || 0;
+            const drawdownEl = document.getElementById('drawdown');
+            drawdownEl.textContent = `${(drawdown * 100).toFixed(2)}%`;
+            drawdownEl.className = 'status-value ' + (drawdown >= 0 ? 'negative' : 'positive');
+            
+            const positions = data.positions || [];
+            document.getElementById('positionCount').textContent = positions.length;
+
+            // 更新当前周期显示
+            if (data.interval) {
+                document.getElementById('currentIntervalText').textContent = `当前周期：${data.interval}`;
+                const sel = document.getElementById('intervalSelect');
+                if (sel && !sel.disabled) {
+                    sel.value = data.interval;
+                }
+            }
+
+            // 更新当前策略模式显示
+            if (data.strategy_mode) {
+                document.getElementById('currentStrategyText').textContent = `当前策略：${translateStrategyLabel(data.strategy_mode)}`;
+                const ssel = document.getElementById('strategySelect');
+                const typeSel = document.getElementById('strategyTypeSelect');
+                if (ssel && !ssel.disabled) {
+                    // 解析策略模式，分离基础模式和类型
+                    let baseMode = data.strategy_mode;
+                    let typeSuffix = '';
+                    if (data.strategy_mode.endsWith('_ultrashort')) {
+                        baseMode = data.strategy_mode.replace('_ultrashort', '');
+                        typeSuffix = '_ultrashort';
+                    } else if (data.strategy_mode.endsWith('_trend')) {
+                        baseMode = data.strategy_mode.replace('_trend', '');
+                        typeSuffix = '_trend';
+                    }
+                    ssel.value = baseMode;
+                    if (typeSel) {
+                        typeSel.value = typeSuffix;
+                    }
+                }
+            }
+
+            updatePositions(positions);
+
+            // 渲染历史决策
+            if (data.decisions) {
+                decisionHistory = data.decisions;
+                renderDecisions(decisionHistory);
+            }
+
+            // 渲染历史日志（刷新后还能看到最近几轮）
+            if (data.logs && Array.isArray(data.logs)) {
+                const container = document.getElementById('logContainer');
+                container.innerHTML = '';
+                data.logs.forEach(msg => addLog(msg, false));
+            }
+
+            // 渲染历史学习总结
+            if (data.strategy_feedback_history && Array.isArray(data.strategy_feedback_history)) {
+                renderLearningHistory(data.strategy_feedback_history);
+            } else if (data.strategy_feedback) {
+                // 兼容：如果只有最新反馈，也显示
+                renderLearningHistory([data.strategy_feedback]);
+            }
+        }
+        
+        // 更新持仓
+        function updatePositions(positions) {
+            const container = document.getElementById('positionsContainer');
+            if (positions.length === 0) {
+                container.innerHTML = '<div class="empty-state">暂无持仓</div>';
+                return;
+            }
+            
+            let html = '<table class="positions-table"><thead><tr><th>交易对</th><th>数量</th><th>入场价</th></tr></thead><tbody>';
+            positions.forEach(pos => {
+                html += `<tr>
+                    <td>${pos.symbol}</td>
+                    <td>${pos.amount.toFixed(6)}</td>
+                    <td>${pos.entry_price.toFixed(4)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        function formatMarketData(marketData) {
+            if (!marketData || typeof marketData !== 'object') return '';
+            
+            const parts = [];
+            
+            // Ticker 数据
+            if (marketData.ticker) {
+                const t = marketData.ticker;
+                if (t.last) parts.push(`价格: ${parseFloat(t.last).toFixed(2)}`);
+                if (t.change) parts.push(`24h: ${parseFloat(t.change).toFixed(2)}%`);
+                if (t.bid_ask_spread !== undefined && t.bid_ask_spread !== 0) {
+                    parts.push(`价差: ${parseFloat(t.bid_ask_spread).toFixed(4)}%`);
+                }
+            }
+            
+            // 订单簿数据
+            if (marketData.orderbook) {
+                const ob = marketData.orderbook;
+                if (ob.imbalance !== undefined) {
+                    const imbalance = parseFloat(ob.imbalance);
+                    const imbalanceText = `不平衡度: ${imbalance.toFixed(2)}%`;
+                    if (imbalance > 0) {
+                        parts.push(`<span style="color: #4caf50;">${imbalanceText} (买强)</span>`);
+                    } else if (imbalance < 0) {
+                        parts.push(`<span style="color: #f44336;">${imbalanceText} (卖强)</span>`);
+                    } else {
+                        parts.push(imbalanceText);
+                    }
+                }
+                if (ob.bid_depth && ob.ask_depth) {
+                    parts.push(`深度: ${ob.bid_depth}/${ob.ask_depth}档`);
+                }
+            }
+            
+            // 最近成交数据
+            if (marketData.recent_trades) {
+                const rt = marketData.recent_trades;
+                if (rt.buy_sell_ratio !== undefined) {
+                    parts.push(`买卖比: ${parseFloat(rt.buy_sell_ratio).toFixed(2)}`);
+                }
+            }
+            
+            return parts.length > 0 ? `<div style="font-size: 0.85em; color: #666; margin-top: 4px;">📊 ${parts.join(' | ')}</div>` : '';
+        }
+
+        function renderDecisions(list) {
+            const container = document.getElementById('decisionsContainer');
+            if (!list || list.length === 0) {
+                container.innerHTML = '<div class="empty-state">暂无决策</div>';
+                return;
+            }
+
+            const rows = [...list].reverse().map(dec => {
+                const marketDataHtml = formatMarketData(dec.market_data);
+                return `
+                <tr>
+                    <td>${dec.timestamp || '--'}</td>
+                    <td>${dec.symbol || '--'}</td>
+                    <td>${translateStrategyLabel(dec.strategy)}</td>
+                    <td>${renderActionTag(dec.action)}</td>
+                    <td>${formatQty(dec.quantity)}</td>
+                    <td>${formatPrice(dec.entry)}</td>
+                    <td>${formatPrice(dec.stop_loss)}</td>
+                    <td>${formatPrice(dec.take_profit)}</td>
+                    <td>${renderStatusTag(dec.status)}</td>
+                    <td>
+                        ${dec.message || ''}
+                        ${marketDataHtml}
+                    </td>
+                </tr>
+            `;
+            }).join('');
+
+            container.innerHTML = `
+                <table class="decision-table">
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>交易对</th>
+                            <th>策略</th>
+                            <th>操作</th>
+                            <th>数量</th>
+                            <th>入场</th>
+                            <th>止损</th>
+                            <th>止盈</th>
+                            <th>状态</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+        
+        // 添加日志
+        function addLog(message, scroll = true) {
+            const container = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = message;
+            container.appendChild(entry);
+            if (scroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+        
+        // 启动交易
+        async function startTrading() {
+            try {
+                const response = await fetch('/api/start', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    alert('交易已启动');
+                    updateStatus();
+                } else {
+                    alert('启动失败: ' + data.message);
+                }
+            } catch (error) {
+                alert('启动失败: ' + error.message);
+            }
+        }
+        
+        // 停止交易
+        async function stopTrading() {
+            if (!confirm('确定要停止交易吗？')) return;
+            
+            try {
+                const response = await fetch('/api/stop', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    alert('交易已停止');
+                    updateStatus();
+                } else {
+                    alert('停止失败: ' + data.message);
+                }
+            } catch (error) {
+                alert('停止失败: ' + error.message);
+            }
+        }
+        
+        async function loadConfig() {
+            try {
+                const resp = await fetch('/api/config');
+                const cfg = await resp.json();
+                if (cfg.INTERVAL) {
+                    const sel = document.getElementById('intervalSelect');
+                    sel.value = cfg.INTERVAL;
+                    document.getElementById('currentIntervalText').textContent = `当前周期：${cfg.INTERVAL}`;
+                }
+                if (cfg.STRATEGY_MODE) {
+                    const ssel = document.getElementById('strategySelect');
+                    const typeSel = document.getElementById('strategyTypeSelect');
+                    // 解析策略模式
+                    let baseMode = cfg.STRATEGY_MODE;
+                    let typeSuffix = '';
+                    if (cfg.STRATEGY_MODE.endsWith('_ultrashort')) {
+                        baseMode = cfg.STRATEGY_MODE.replace('_ultrashort', '');
+                        typeSuffix = '_ultrashort';
+                    } else if (cfg.STRATEGY_MODE.endsWith('_trend')) {
+                        baseMode = cfg.STRATEGY_MODE.replace('_trend', '');
+                        typeSuffix = '_trend';
+                    }
+                    ssel.value = baseMode;
+                    if (typeSel) {
+                        typeSel.value = typeSuffix;
+                    }
+                    document.getElementById('currentStrategyText').textContent = `当前策略：${translateStrategyLabel(cfg.STRATEGY_MODE)}`;
+                }
+            } catch (e) {
+                console.warn('加载配置失败:', e);
+            }
+        }
+
+        async function saveInterval() {
+            const sel = document.getElementById('intervalSelect');
+            const value = sel.value;
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ INTERVAL: value })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('运行周期已更新，将从下一个周期开始生效');
+                    document.getElementById('currentIntervalText').textContent = `当前周期：${value}`;
+                } else {
+                    alert('更新失败: ' + data.message);
+                }
+            } catch (e) {
+                alert('更新失败: ' + e.message);
+            }
+        }
+
+        function translateStrategyLabel(mode) {
+            if (!mode) return '未知';
+            
+            // 解析超短/趋势后缀
+            let baseMode = mode;
+            let typeLabel = '';
+            
+            if (mode.endsWith('_ultrashort')) {
+                baseMode = mode.replace('_ultrashort', '');
+                typeLabel = '（超短）';
+            } else if (mode.endsWith('_trend')) {
+                baseMode = mode.replace('_trend', '');
+                typeLabel = '（趋势）';
+            }
+            
+            let baseLabel = '';
+            switch (baseMode) {
+                case 'conservative': baseLabel = '保守型'; break;
+                case 'balanced': baseLabel = '均衡型'; break;
+                case 'aggressive': baseLabel = '激进型'; break;
+                case 'scalping': baseLabel = '做T型'; break;
+                case 'sniper': baseLabel = '舔一口就跑'; break;
+                case 'momentum_guard': baseLabel = '量能反向狙击'; break;
+                default: baseLabel = baseMode;
+            }
+            
+            return baseLabel + typeLabel;
+        }
+
+        function renderActionTag(action) {
+            if (!action) return '<span class="tag tag-flat">未知</span>';
+            const upper = action.toUpperCase();
+            if (upper === 'BUY') return '<span class="tag tag-buy">做多</span>';
+            if (upper === 'SELL') return '<span class="tag tag-sell">做空</span>';
+            if (upper === 'FLAT') return '<span class="tag tag-flat">观望</span>';
+            return `<span class="tag tag-flat">${action}</span>`;
+        }
+
+        function renderStatusTag(status) {
+            if (!status) return '<span class="tag tag-flat">未知</span>';
+            const s = status.toLowerCase();
+            if (s === 'ordered') return '<span class="tag tag-buy">已下单</span>';
+            if (s === 'planned') return '<span class="tag tag-skip">待下单</span>';
+            if (s === 'skipped') return '<span class="tag tag-flat">观望</span>';
+            if (s === 'failed') return '<span class="tag tag-failed">失败</span>';
+            if (s === 'pending') return '<span class="tag tag-skip">计算中</span>';
+            return `<span class="tag tag-flat">${status}</span>`;
+        }
+
+        function formatQty(value) {
+            if (typeof value !== 'number' || isNaN(value)) return '--';
+            return value.toFixed(4);
+        }
+
+        function formatPrice(value) {
+            if (typeof value !== 'number' || isNaN(value) || value === 0) return '--';
+            return value.toFixed(4);
+        }
+
+        function renderLearningHistory(history) {
+            const container = document.getElementById('learningHistoryContainer');
+            if (!history || history.length === 0) {
+                container.innerHTML = '<div class="empty-state">暂无学习总结</div>';
+                return;
+            }
+
+            const rows = [...history].reverse().map(fb => {
+                const pnl = fb.pnl || 0;
+                const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+                const pnlText = pnl >= 0 ? `+${pnl.toFixed(4)}` : pnl.toFixed(4);
+                
+                return `
+                <tr>
+                    <td>${fb.timestamp || '--'}</td>
+                    <td>${fb.decision_count || '--'}</td>
+                    <td><span class="status-value ${pnlClass}">${pnlText} USDT</span></td>
+                    <td>${fb.wins || 0} / ${fb.skips || 0} / ${fb.fails || 0}</td>
+                    <td>${fb.recommended_strategy ? translateStrategyLabel(fb.recommended_strategy) : '--'}</td>
+                    <td>
+                        <div><strong>总结：</strong>${fb.summary || '无'}</div>
+                        ${fb.risk_assessment ? `<div style="margin-top:5px;"><strong>风险评估：</strong>${fb.risk_assessment}</div>` : ''}
+                        ${fb.action_items && fb.action_items.length > 0 ? `<div style="margin-top:5px;"><strong>改进建议：</strong><ul style="margin:5px 0;padding-left:20px;">${fb.action_items.map(item => `<li>${item}</li>`).join('')}</ul></div>` : ''}
+                    </td>
+                </tr>
+            `;
+            }).join('');
+
+            container.innerHTML = `
+                <table class="decision-table">
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>决策数</th>
+                            <th>盈亏</th>
+                            <th>胜/观望/败</th>
+                            <th>推荐策略</th>
+                            <th>学习内容</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        async function saveStrategy() {
+            const ssel = document.getElementById('strategySelect');
+            const typeSel = document.getElementById('strategyTypeSelect');
+            const baseMode = ssel.value;
+            const typeSuffix = typeSel.value || '';
+            const fullMode = baseMode + typeSuffix;
+            
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ STRATEGY_MODE: fullMode })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('策略模式已更新，将从下一个周期开始生效');
+                    document.getElementById('currentStrategyText').textContent = `当前策略：${translateStrategyLabel(fullMode)}`;
+                } else {
+                    alert('更新失败: ' + data.message);
+                }
+            } catch (e) {
+                alert('更新失败: ' + e.message);
+            }
+        }
+
+        // 定期更新状态
+        setInterval(updateStatus, 5000);
+        
+        // 初始加载
+        updateStatus();
+        loadConfig();
+    </script>
+</body>
+</html>
+
